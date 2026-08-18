@@ -121,11 +121,13 @@ async function refreshPrinter(){
 }
 $('pstatus').onclick=refreshPrinter;
 
-// ───────── Sheet coloring (fire-and-forget, cross-origin) ─────────
-function colorSheet(isbn){
+// ───────── Sheet logging (records every scan; colors green on print) ─────────
+const DEVICE=(function(){let d=localStorage.getItem('bl_device');if(!d){d='web-'+Math.random().toString(36).slice(2,7);localStorage.setItem('bl_device',d);}return d;})();
+function logEvent(event,isbn){
  if(!SHEET_HOOK_URL) return;
+ const title=ISBN_TO_TITLE[isbn]||"", po=ISBN_TO_PO[isbn]||"", inList=!!ISBN_TO_TITLE[isbn];
  fetch(SHEET_HOOK_URL,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain"},
-   body:JSON.stringify({isbn:isbn,secret:SHEET_HOOK_SECRET})}).catch(()=>{});
+   body:JSON.stringify({secret:SHEET_HOOK_SECRET,event:event,isbn:isbn,title:title,po:po,inList:inList,device:DEVICE})}).catch(()=>{});
 }
 
 // ───────── Feedback ─────────
@@ -146,9 +148,10 @@ function lookup(rawInput){                    // find the book — does NOT prin
  if(!title){
   currentIsbn=null; r.className="bad";
   r.innerHTML='<div class="v">⚠ NOT in your list</div><div class="t">Scanned: '+esc(isbn)+'</div><div class="i">likely a misread — scan it again</div>';
-  beep(false); if(navigator.vibrate)navigator.vibrate([90,60,90]); return;
+  beep(false); if(navigator.vibrate)navigator.vibrate([90,60,90]); logEvent("scan",isbn); return;
  }
  currentIsbn=isbn;
+ logEvent("scan",isbn);
  const po=ISBN_TO_PO[isbn];
  const poLine=po?'<div class="po">PO '+esc(po)+'</div>':'<div class="po nopo">— no PO —</div>';
  r.className="ok";
@@ -162,7 +165,7 @@ async function doPrint(){                      // the Print button → actually 
  const isbn=currentIsbn, title=ISBN_TO_TITLE[isbn]||"", po=ISBN_TO_PO[isbn]||"";
  const btn=$('printBtn'); if(btn){btn.disabled=true; btn.textContent="Printing…";}
  const r=$('result'); const poLine=po?'<div class="po">PO '+esc(po)+'</div>':'';
- colorSheet(isbn);
+ logEvent("print",isbn);
  try{
   await bpPrint(makeZpl(isbn));
   r.innerHTML=poLine+'<div class="t">'+esc(title)+'</div><div class="i">'+isbn+'</div><div class="i">🏷️ label printed</div>';
