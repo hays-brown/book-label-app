@@ -37,6 +37,7 @@
  #result.idle{color:#8a94a3}#result.ok{background:#e8f7ee;color:#137a3f;border-color:#bfe8cd}#result.bad{background:#fdeceb;color:#c0362f;border-color:#f6c9c6}
  #result .v{font-size:24px;font-weight:800}#result .t{font-size:16px}#result .i{font-size:14px;font-variant-numeric:tabular-nums;opacity:.85}
  #result .po{font-size:38px;font-weight:900;letter-spacing:.5px;line-height:1.05}
+ #result .listbadge{display:inline-block;background:#2f6fed;color:#fff;font-size:14px;font-weight:800;padding:5px 14px;border-radius:20px;margin-bottom:4px}
  #result .po.nopo{font-size:20px;color:#8a94a3;font-weight:700}
  .hint{font-size:12px;color:#8a94a3;text-align:center;line-height:1.5}
  .banner{background:#fff8e6;border:1px solid #f0dca0;color:#8a6d1a;border-radius:12px;padding:12px;font-size:13px;line-height:1.5;display:none}
@@ -92,6 +93,12 @@ function isbn13from10(d9){let c="978"+d9,s=0;for(let i=0;i<c.length;i++)s+=(i%2?
 function canonical(raw){const d=(raw||"").replace(/\D/g,"");if(d.length>=13&&(d.slice(0,3)==="978"||d.slice(0,3)==="979"))return d.slice(0,13);if(d.length===9||d.length===10)return isbn13from10(d.slice(0,9));return d;}
 const ISBN_TO_TITLE = {}; MASTER.forEach(b=>{ISBN_TO_TITLE[canonical(b.i)]=b.t;});
 const ISBN_TO_PO = {}; MASTER.forEach(b=>{ISBN_TO_PO[canonical(b.i)]=b.p||"";});
+const LIST_LABELS = {"KBAANM35":"UK list round 2"};   // PO -> friendly list name shown as a badge
+function listBadge(po){
+ const parts=(po||"").split("/").map(s=>s.trim());
+ const labels=[...new Set(parts.map(p=>LIST_LABELS[p]).filter(Boolean))];
+ return labels.length?'<div class="listbadge">'+labels.map(esc).join(" · ")+'</div>':'';
+}
 
 function makeZpl(isbn){
  const d=isbn.replace(/\D/g,"");
@@ -166,7 +173,7 @@ function lookup(rawInput){                    // find the book — does NOT prin
  const po=ISBN_TO_PO[isbn];
  const poLine=po?'<div class="po">PO '+esc(po)+'</div>':'<div class="po nopo">— no PO —</div>';
  r.className="ok";
- r.innerHTML=poLine+'<div class="t">'+esc(title)+'</div><div class="i">'+isbn+'</div>'
+ r.innerHTML=listBadge(po)+poLine+'<div class="t">'+esc(title)+'</div><div class="i">'+isbn+'</div>'
    +'<button class="btn" id="printBtn">Print label</button>';
  $('printBtn').onclick=doPrint;
  beep(true); if(navigator.vibrate)navigator.vibrate(60);
@@ -175,13 +182,13 @@ async function doPrint(){                      // the Print button → actually 
  if(!currentIsbn) return;
  const isbn=currentIsbn, title=ISBN_TO_TITLE[isbn]||"", po=ISBN_TO_PO[isbn]||"";
  const btn=$('printBtn'); if(btn){btn.disabled=true; btn.textContent="Printing…";}
- const r=$('result'); const poLine=po?'<div class="po">PO '+esc(po)+'</div>':'';
+ const r=$('result'); const poLine=po?'<div class="po">PO '+esc(po)+'</div>':''; const badge=listBadge(po);
  logEvent("print",isbn);
  try{
   await bpPrint(makeZpl(isbn));
-  r.innerHTML=poLine+'<div class="t">'+esc(title)+'</div><div class="i">'+isbn+'</div><div class="i">🏷️ label printed</div>';
+  r.innerHTML=badge+poLine+'<div class="t">'+esc(title)+'</div><div class="i">'+isbn+'</div><div class="i">🏷️ label printed</div>';
  }catch(e){
-  r.innerHTML=poLine+'<div class="t">'+esc(title)+'</div><div class="i">'+isbn+'</div><div class="i" style="color:#c0362f">marked in sheet, but printer not connected — tap “Printer” above</div>';
+  r.innerHTML=badge+poLine+'<div class="t">'+esc(title)+'</div><div class="i">'+isbn+'</div><div class="i" style="color:#c0362f">marked in sheet, but printer not connected — tap “Printer” above</div>';
   refreshPrinter();
  }
 }
