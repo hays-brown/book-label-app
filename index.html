@@ -111,9 +111,15 @@ const BP_BASES=["https://127.0.0.1:9101","https://localhost:9101"];
 let bpBase=null, bpDevice=null;
 async function bpFindPrinter(){
  for(const base of BP_BASES){
+  // 1) try the configured default printer
   try{
    const r=await fetch(base+"/default?type=printer",{cache:"no-store"});
    if(r.ok){ const dev=await r.json(); if(dev&&dev.uid){ bpBase=base; bpDevice=dev; return dev; } }
+  }catch(e){}
+  // 2) fall back to the first AVAILABLE printer (works even if no default is set)
+  try{
+   const r=await fetch(base+"/available",{cache:"no-store"});
+   if(r.ok){ const d=await r.json(); const list=(d&&d.printer)||[]; if(list.length&&list[0].uid){ bpBase=base; bpDevice=list[0]; return list[0]; } }
   }catch(e){}
  }
  return null;
