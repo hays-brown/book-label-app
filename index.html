@@ -54,30 +54,18 @@
   <div class="devrow">This computer: <input id="devname" placeholder="name this station"></div>
   <div id="setup" class="banner"></div>
 
-  <div id="result" class="idle"><div class="v">Ready</div><div class="t">Scan a barcode, or search a title</div></div>
+  <div id="result" class="idle"><div class="v">Ready</div><div class="t">Search a title or ISBN, or scan a barcode</div></div>
 
-  <div class="tabs">
-    <div class="tab on" data-p="scan">Scan barcode</div>
-    <div class="tab" data-p="title">Find by title</div>
+  <label class="lbl" for="q">Search by title or ISBN</label>
+  <div class="row">
+    <input id="q" autocomplete="off" placeholder="Type a title or ISBN…" autofocus>
+    <button id="qBtn" class="go">Go</button>
   </div>
+  <div class="results" id="results"></div>
 
-  <div class="panel on" id="p-scan">
-    <label class="lbl" for="manual">Type or scan an ISBN</label>
-    <div class="row">
-      <input id="manual" inputmode="numeric" autocomplete="off" placeholder="Enter ISBN…" autofocus>
-      <button id="checkBtn" class="go">Check</button>
-    </div>
-    <div class="results" id="manualResults"></div>
-    <div class="orline">— or scan with the camera —</div>
-    <div id="camwrap"><video id="video" playsinline muted></video><div id="retic"></div></div>
-    <button class="btn" id="camBtn">Start camera</button>
-  </div>
-
-  <div class="panel" id="p-title">
-    <input id="search" autocomplete="off" placeholder="Type part of the title…">
-    <div class="results" id="results"></div>
-    <div class="hint">Tap a book to print its ISBN label.</div>
-  </div>
+  <div class="orline">— or scan with the camera —</div>
+  <div id="camwrap"><video id="video" playsinline muted></video><div id="retic"></div></div>
+  <button class="btn" id="camBtn">Start camera</button>
 
   <div class="hint" id="count"></div>
 </main>
@@ -208,13 +196,6 @@ async function doPrint(){                      // the Print button → actually 
  }
 }
 
-// ───────── Tabs ─────────
-document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
- document.querySelectorAll('.tab').forEach(x=>x.classList.remove('on'));
- document.querySelectorAll('.panel').forEach(x=>x.classList.remove('on'));
- t.classList.add('on'); $('p-'+t.dataset.p).classList.add('on');
- if(t.dataset.p==='title') $('search').focus();
-});
 
 // ───────── Camera scanning: fast native BarcodeDetector, ZXing fallback (iPhone) ─────────
 const ISBN_SET=new Set(MASTER.map(b=>canonical(b.i)));
@@ -249,38 +230,37 @@ async function startCam(){
 }
 function stopCam(){ scanning=false; if(rafId)cancelAnimationFrame(rafId); if(zx){try{zx.reset();}catch(e){}zx=null;} if(vStream){vStream.getTracks().forEach(t=>t.stop());vStream=null;} try{$('video').srcObject=null;}catch(e){} $('camBtn').textContent="Start camera"; $('camBtn').classList.remove('grey'); }
 $('camBtn').onclick=()=>{ scanning?stopCam():startCam(); };
-function submitManual(){const el=$('manual');const v=el.value.trim();el.value='';$('manualResults').innerHTML='';if(v)lookup(v);el.focus();}
-$('manual').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();submitManual();}});
-$('checkBtn').addEventListener('click',submitManual);
-// live fuzzy ISBN search — show matching books as they type the ISBN
-$('manual').addEventListener('input',e=>{
- const q=e.target.value.replace(/\D/g,''); const box=$('manualResults'); box.innerHTML='';
- if(q.length<3) return;                                  // wait for a few digits
- const hits=MASTER.filter(b=>canonical(b.i).includes(q));
- hits.sort((a,b)=>(canonical(a.i).startsWith(q)?0:1)-(canonical(b.i).startsWith(q)?0:1)); // prefix matches first
- hits.slice(0,25).forEach(b=>{
-  const el=document.createElement('button'); el.className='bk';
-  el.innerHTML='<span style="font-variant-numeric:tabular-nums">'+b.i+'</span>'+(b.t?'<span class="bi">'+esc(b.t)+(b.p?'  ·  Pallet '+esc(b.p):'')+'</span>':'');
-  el.onclick=()=>{lookup(b.i);e.target.value='';box.innerHTML='';};
-  box.appendChild(el);
- });
- if(!box.children.length) box.innerHTML='<div class="hint">No ISBN matches “'+esc(e.target.value)+'”.</div>';
-});
-
-// ───────── Title search ─────────
+// ───────── One search box: type a TITLE or an ISBN ─────────
 function nrm(s){return(s||"").toLowerCase().replace(/[^a-z0-9]+/g," ").trim();}
-$('search').addEventListener('input',e=>{
- const q=nrm(e.target.value), box=$('results'); box.innerHTML="";
- if(!q)return;
- const toks=q.split(" ");
- MASTER.filter(b=>{const t=nrm(b.t);return toks.every(k=>t.includes(k));}).slice(0,30).forEach(b=>{
-  const el=document.createElement('button');el.className="bk";
-  el.innerHTML=esc(b.t)+'<span class="bi">'+b.i+'</span>';
-  el.onclick=()=>{lookup(b.i);e.target.value="";box.innerHTML="";};
+function pickFirst(){
+ const raw=$('q').value.trim(); const digits=raw.replace(/\D/g,'');
+ if(!/[a-z]/i.test(raw) && digits.length>=10){ lookup(raw); $('q').value=""; $('results').innerHTML=""; return; }
+ const first=$('results').querySelector('.bk'); if(first) first.click();
+}
+$('q').addEventListener('input',()=>{
+ const raw=$('q').value.trim(); const box=$('results'); box.innerHTML="";
+ if(raw.length<2) return;
+ let hits, isbnMode=false;
+ if(!/[a-z]/i.test(raw)){                                   // digits only → ISBN search
+  const q=raw.replace(/\D/g,''); if(q.length<3) return; isbnMode=true;
+  hits=MASTER.filter(b=>canonical(b.i).includes(q));
+  hits.sort((a,b)=>(canonical(a.i).startsWith(q)?0:1)-(canonical(b.i).startsWith(q)?0:1));
+ }else{                                                     // has letters → title search
+  const toks=nrm(raw).split(" ").filter(Boolean);
+  hits=MASTER.filter(b=>{const t=nrm(b.t);return toks.every(k=>t.includes(k));});
+ }
+ hits.slice(0,25).forEach(b=>{
+  const el=document.createElement('button'); el.className="bk";
+  const isbnSpan='<span style="font-variant-numeric:tabular-nums">'+b.i+'</span>';
+  const titleSpan=(b.t?esc(b.t):'(no title)');
+  el.innerHTML=(isbnMode?isbnSpan:titleSpan)+'<span class="bi">'+(isbnMode?titleSpan:b.i)+(b.p?'  ·  Pallet '+esc(b.p):'')+'</span>';
+  el.onclick=()=>{lookup(b.i);$('q').value="";box.innerHTML="";};
   box.appendChild(el);
  });
- if(!box.children.length)box.innerHTML='<div class="hint">No titles match “'+esc(e.target.value)+'”.</div>';
+ if(!box.children.length) box.innerHTML='<div class="hint">No matches for “'+esc(raw)+'”.</div>';
 });
+$('q').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();pickFirst();}});
+$('qBtn').addEventListener('click',pickFirst);
 
 // try to connect to the printer on load
 refreshPrinter();
